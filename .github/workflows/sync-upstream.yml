@@ -1,0 +1,34 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  sync:
+    if: github.repository == 'wntic/horizon'
+    runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Merge upstream main into the fork's main
+        run: gh repo sync "$GH_REPO" --branch main
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+
+      # Upstream's own workflows (nightly, release, ci, ...) must not run in the fork.
+      - name: Disable every other workflow in the fork
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow list --all --json path,state \
+            -q '.[] | select(.state == "active" and .path != ".github/workflows/sync-upstream.yml") | .path' |
+          while read -r path; do
+            gh workflow disable "$(basename "$path")"
+          done
